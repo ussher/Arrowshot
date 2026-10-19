@@ -20,19 +20,6 @@ enum EditorTool: Int, CaseIterable, Hashable {
         case .crop: NSLocalizedString("Crop", comment: "")
         }
     }
-
-    /// Single-key shortcut, matching CanvasView's keyDown handling.
-    var shortcutLabel: String {
-        switch self {
-        case .arrow: "A"
-        case .text: "T"
-        case .rectangle: "R"
-        case .ellipse: "O"
-        case .line: "L"
-        case .mosaic: "M"
-        case .crop: "C"
-        }
-    }
 }
 
 enum AnnotationKind {

@@ -39,15 +39,16 @@ Everything runs locally on your Mac. No account, no cloud, no network access.
 | Zoom in / out / fit | ⌘+ / ⌘− / ⌘0 |
 | Open Settings | ⌘, |
 | Move the selected object | Arrow keys (1 pt), Shift + arrow keys (10 pt) |
-| Switch tools | A (arrow), T (text), R (rectangle), O (ellipse), L (line), M (pixelate), C (crop), or 1–7 |
 
 ## Settings
 
 Open Settings with ⌘, while Arrowshot is active (click its Dock icon first), or from the menu-bar icon. You can change:
 
 - **Capture shortcuts** — click a field and press the new key combination (include ⌘, ⌃, or ⌥). **Reset to Defaults** restores the original keys.
+- **Default color** — the color new arrows and labels start with. The last color you pick in the editor is remembered.
 - **Save folder** — where ⌘S saves instantly. Defaults to Downloads.
 - **Default format** — PNG or JPEG for ⌘S and drag export. Save As (⌘⇧S) lets you pick each time.
+- **File name** — the name used when you drag the image to the desktop, and for ⌘S. `{date}`, `{time}`, and `{datetime}` fill in the date and time.
 - **Timer length** — 3 or 5 seconds for the timed capture.
 - **Language** — System, English, or 日本語. Arrowshot asks to restart to apply it.
 

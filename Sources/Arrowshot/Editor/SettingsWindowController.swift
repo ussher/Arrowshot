@@ -111,7 +111,7 @@ final class HotKeyRecorderControl: NSView {
 }
 
 @MainActor
-final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+final class SettingsWindowController: NSWindowController, NSWindowDelegate, NSTextFieldDelegate {
     /// Called after any shortcut changes so the app can re-register hot keys.
     var onHotKeysChanged: (() -> Void)?
     /// Called when the window closes so the app can restore its activation policy.
@@ -119,6 +119,9 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
     private var recorders: [HotKeyAction: HotKeyRecorderControl] = [:]
     private let saveFolderValueLabel = NSTextField(labelWithString: "")
+    private let defaultColorWell = SettingsColorWell()
+    private let fileNameField = NSTextField(string: "")
+    private let fileNamePreviewLabel = NSTextField(labelWithString: "")
 
     init() {
         let window = NSWindow(
@@ -204,11 +207,52 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let formatHint = NSTextField(labelWithString: NSLocalizedString("Used by ⌘S and drag export. Save As (⇧⌘S) lets you pick each time.", comment: ""))
         formatHint.font = .systemFont(ofSize: 11)
         formatHint.textColor = .secondaryLabelColor
-        let saveSection = NSStackView(views: [saveHeading, saveFolderValueLabel, saveButtons, formatRow, formatHint])
+        let fileNameLabel = NSTextField(labelWithString: NSLocalizedString("File Name", comment: ""))
+        fileNameLabel.font = .systemFont(ofSize: 13)
+        fileNameField.stringValue = ExportFileName.pattern
+        fileNameField.font = .systemFont(ofSize: 13)
+        fileNameField.isEditable = true
+        fileNameField.isBezeled = true
+        fileNameField.bezelStyle = .roundedBezel
+        fileNameField.lineBreakMode = .byTruncatingTail
+        fileNameField.delegate = self
+        fileNameField.target = self
+        fileNameField.action = #selector(fileNamePatternEdited(_:))
+        fileNameField.cell?.sendsActionOnEndEditing = true
+        let fileNameHint = NSTextField(wrappingLabelWithString: NSLocalizedString("Use {date}, {time}, or {datetime}. Dragging to the desktop and ⌘S use this name.", comment: ""))
+        fileNameHint.font = .systemFont(ofSize: 11)
+        fileNameHint.textColor = .secondaryLabelColor
+        fileNamePreviewLabel.font = .systemFont(ofSize: 11)
+        fileNamePreviewLabel.textColor = .secondaryLabelColor
+        fileNamePreviewLabel.lineBreakMode = .byTruncatingMiddle
+        updateFileNamePreview()
+        let saveSection = NSStackView(views: [
+            saveHeading, saveFolderValueLabel, saveButtons, formatRow, formatHint,
+            fileNameLabel, fileNameField, fileNameHint, fileNamePreviewLabel
+        ])
         saveSection.orientation = .vertical
         saveSection.alignment = .leading
         saveSection.spacing = 8
         saveSection.setCustomSpacing(14, after: saveButtons)
+        saveSection.setCustomSpacing(14, after: formatHint)
+
+        let colorHeading = NSTextField(labelWithString: NSLocalizedString("Default Color", comment: ""))
+        colorHeading.font = .systemFont(ofSize: 15, weight: .semibold)
+        defaultColorWell.color = AnnotationColorSettings.color
+        defaultColorWell.target = self
+        defaultColorWell.action = #selector(defaultColorChanged(_:))
+        defaultColorWell.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            defaultColorWell.widthAnchor.constraint(equalToConstant: 48),
+            defaultColorWell.heightAnchor.constraint(equalToConstant: 28)
+        ])
+        let colorHint = NSTextField(wrappingLabelWithString: NSLocalizedString("New arrows and labels start in this color. The last color you pick in the editor is remembered.", comment: ""))
+        colorHint.font = .systemFont(ofSize: 11)
+        colorHint.textColor = .secondaryLabelColor
+        let colorSection = NSStackView(views: [colorHeading, defaultColorWell, colorHint])
+        colorSection.orientation = .vertical
+        colorSection.alignment = .leading
+        colorSection.spacing = 8
 
         // Reference list of the fixed editor shortcuts.
         let refHeading = NSTextField(labelWithString: NSLocalizedString("Editor Shortcuts", comment: ""))
@@ -223,8 +267,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
             (NSLocalizedString("Undo / Redo", comment: ""), "⌘Z / ⇧⌘Z"),
             (NSLocalizedString("Zoom In / Out / Fit", comment: ""), "⌘+ / ⌘- / ⌘0"),
             (NSLocalizedString("Open Settings", comment: ""), "⌘,"),
-            (NSLocalizedString("Move Selection", comment: ""), NSLocalizedString("↑↓←→ (⇧ moves 10)", comment: "")),
-            (NSLocalizedString("Switch Tools", comment: ""), NSLocalizedString("A Arrow  T Text  R Rect  O Ellipse  L Line  M Pixelate  C Crop", comment: ""))
+            (NSLocalizedString("Move Selection", comment: ""), NSLocalizedString("↑↓←→ (⇧ moves 10)", comment: ""))
         ]
         for (name, keys) in references {
             let n = NSTextField(labelWithString: name)
@@ -274,9 +317,11 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         let divider2 = NSBox(); divider2.boxType = .separator
         let divider3 = NSBox(); divider3.boxType = .separator
         let divider4 = NSBox(); divider4.boxType = .separator
+        let divider5 = NSBox(); divider5.boxType = .separator
 
         let stack = NSStackView(views: [
             heading, grid, hint, resetButton,
+            divider5, colorSection,
             divider1, saveSection,
             divider3, timerSection,
             divider4, languageSection,
@@ -288,23 +333,84 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         stack.translatesAutoresizingMaskIntoConstraints = false
         stack.setCustomSpacing(8, after: grid)
         stack.setCustomSpacing(18, after: resetButton)
+        stack.setCustomSpacing(18, after: colorSection)
         stack.setCustomSpacing(18, after: saveSection)
         stack.setCustomSpacing(18, after: timerSection)
         stack.setCustomSpacing(18, after: languageSection)
         stack.setCustomSpacing(8, after: refHeading)
-        contentView.addSubview(stack)
+
+        let scrollView = NSScrollView()
+        scrollView.drawsBackground = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = true
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentView.addSubview(scrollView)
+
+        let document = SettingsDocumentView()
+        document.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = document
+        document.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            stack.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            stack.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            stack.bottomAnchor.constraint(lessThanOrEqualTo: contentView.bottomAnchor, constant: -20),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: contentView.topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: contentView.bottomAnchor),
+            document.leadingAnchor.constraint(equalTo: scrollView.contentView.leadingAnchor),
+            document.trailingAnchor.constraint(equalTo: scrollView.contentView.trailingAnchor),
+            document.widthAnchor.constraint(equalTo: scrollView.contentView.widthAnchor),
+            stack.leadingAnchor.constraint(equalTo: document.leadingAnchor, constant: 24),
+            stack.trailingAnchor.constraint(equalTo: document.trailingAnchor, constant: -24),
+            stack.topAnchor.constraint(equalTo: document.topAnchor, constant: 20),
+            stack.bottomAnchor.constraint(equalTo: document.bottomAnchor, constant: -20),
             divider1.widthAnchor.constraint(equalTo: stack.widthAnchor),
             divider2.widthAnchor.constraint(equalTo: stack.widthAnchor),
             divider3.widthAnchor.constraint(equalTo: stack.widthAnchor),
             divider4.widthAnchor.constraint(equalTo: stack.widthAnchor),
-            saveFolderValueLabel.widthAnchor.constraint(equalTo: stack.widthAnchor)
+            divider5.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            saveFolderValueLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileNameField.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileNameHint.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            fileNamePreviewLabel.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            colorHint.widthAnchor.constraint(equalTo: stack.widthAnchor)
         ])
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(savedAnnotationColorChanged),
+            name: AnnotationColorSettings.didChange,
+            object: nil
+        )
+    }
+
+    @objc private func defaultColorChanged(_ sender: NSColorWell) {
+        AnnotationColorSettings.set(sender.color)
+    }
+
+    @objc private func savedAnnotationColorChanged() {
+        let color = AnnotationColorSettings.color
+        guard AnnotationColorSettings.hexString(for: defaultColorWell.color) != AnnotationColorSettings.hexString(for: color) else {
+            return
+        }
+        defaultColorWell.color = color
+    }
+
+    @objc private func fileNamePatternEdited(_ sender: NSTextField) {
+        ExportFileName.setPattern(sender.stringValue)
+        updateFileNamePreview()
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        guard let field = notification.object as? NSTextField, field === fileNameField else { return }
+        fileNamePatternEdited(field)
+    }
+
+    private func updateFileNamePreview() {
+        let name = ExportFileName.fileName(format: ImageFormat.preferred, pattern: fileNameField.stringValue)
+        fileNamePreviewLabel.stringValue = String(
+            format: NSLocalizedString("Preview: %@", comment: "Resolved export file name"),
+            name
+        )
     }
 
     @objc private func languageChanged(_ sender: NSSegmentedControl) {
@@ -411,4 +517,17 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window?.makeFirstResponder(nil)
         onClose?()
     }
+}
+
+/// Keeps the shared color panel from offering transparency. Annotation colors are opaque.
+private final class SettingsColorWell: NSColorWell {
+    override func activate(_ exclusive: Bool) {
+        NSColorPanel.shared.showsAlpha = false
+        super.activate(exclusive)
+    }
+}
+
+/// Top-down document so the settings form scrolls from its heading.
+private final class SettingsDocumentView: NSView {
+    override var isFlipped: Bool { true }
 }

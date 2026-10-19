@@ -18,11 +18,17 @@ CLANG_MODULE_CACHE_PATH="$module_cache" swiftc \
     Sources/Arrowshot/Support/Geometry.swift \
     Sources/Arrowshot/Support/ImageExtensions.swift \
     Sources/Arrowshot/Support/ImageFormat.swift \
+    Sources/Arrowshot/Support/SaveLocation.swift \
+    Sources/Arrowshot/Support/EditorPreferences.swift \
+    Sources/Arrowshot/Support/AppLanguage.swift \
+    Sources/Arrowshot/Support/HotKeySettings.swift \
+    Sources/Arrowshot/Editor/SettingsWindowController.swift \
     Sources/Arrowshot/Support/PixelExactImageRenderer.swift \
     Sources/Arrowshot/Support/ArrowshotStyle.swift \
     Sources/Arrowshot/Support/EditorCursors.swift \
     Sources/Arrowshot/Support/ArrowGeometry.swift \
     Sources/Arrowshot/Editor/Annotation.swift \
+    Sources/Arrowshot/Editor/CanvasView.swift \
     Sources/Arrowshot/Capture/ScreenCoordinates.swift \
     Sources/Arrowshot/Capture/CaptureOutputSizing.swift \
     Sources/Arrowshot/Capture/OverlayWindowGeometry.swift \

@@ -40,6 +40,7 @@
 "Crop Image" = "画像を切り取り";
 "Crosshair Snapshot" = "十字スナップショット";
 "Cut" = "切り取り";
+"Default Color" = "標準の色";
 "Default Format" = "標準の形式";
 "Delete Annotation" = "注釈を削除";
 "Delete Text" = "テキストを削除";
@@ -52,12 +53,14 @@
 "Editor Shortcuts" = "操作のショートカット";
 "Ellipse" = "楕円";
 "File" = "ファイル";
+"File Name" = "ファイル名";
 "Fill" = "塗りつぶし";
 "Fill (rectangles and ellipses)" = "塗りつぶし（四角・楕円）";
 "Format:" = "形式：";
 "Full Screen Snapshot" = "全画面スナップショット";
 "Hide Arrowshot" = "Arrowshotを隠す";
 "Language" = "言語";
+"New arrows and labels start in this color. The last color you pick in the editor is remembered." = "新しい矢印や文字はこの色で始まります。編集画面で選んだ色は、次に開いたときも使われます。";
 "Later" = "あとで";
 "Line" = "直線";
 "Line and text width" = "線と文字の太さ";
@@ -70,6 +73,7 @@
 "Open Arrowshot at login?" = "ログイン時にArrowshotを開きますか？";
 "Open at Login" = "自動起動を有効にする";
 "Open Settings" = "設定を開く";
+"Preview: %@" = "プレビュー：%@";
 "Open System Settings" = "システム設定を開く";
 "Open…" = "開く…";
 "Paste" = "ペースト";
@@ -111,6 +115,7 @@
 "Undo" = "取り消す";
 "Undo (⌘Z)" = "取り消す（⌘Z）";
 "Undo / Redo" = "取り消す / やり直す";
+"Use {date}, {time}, or {datetime}. Dragging to the desktop and ⌘S use this name." = "{date}、{time}、{datetime} が使えます。デスクトップへのドラッグと⌘Sでこの名前になります。";
 "Used by ⌘S and drag export. Save As (⇧⌘S) lets you pick each time." = "⌘S とドラッグ書き出しで使います。名前を付けて保存（⇧⌘S）ではその都度選べます。";
 "View" = "表示";
 "When enabled, Arrowshot opens automatically when you log in and stays in the menu bar." = "有効にすると、Macへのログイン時にArrowshotが自動的に起動してメニューバーに常駐します。";

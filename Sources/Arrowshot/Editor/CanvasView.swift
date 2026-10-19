@@ -155,6 +155,14 @@ final class CanvasView: NSView, NSTextViewDelegate {
     private var pointerTrackingArea: NSTrackingArea?
     private var inlineTextEditor: InlineTextEditor?
     private var textEditingSession: TextEditingSession?
+    /// True while the first typed characters are being handed to a new label.
+    /// Holds off a nested key or end-editing callback so that handoff cannot
+    /// dismiss the editor or start a second label.
+    private var isInsertingTypedLabel = false
+    /// Image point of the most recent click or drag release. Typing places a
+    /// label here unless an arrow is selected, in which case the label sits on
+    /// the arrow's tail.
+    private var lastClickImagePoint: CGPoint?
     private var cropSelectionRect: CGRect?
     private var cropDragEdges: CropEdges = []
     private var originalCropRect: CGRect?
@@ -263,6 +271,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         annotations = []
         currentTextSize = nil
         selectedAnnotationID = nil
+        lastClickImagePoint = nil
         previewAnnotation = nil
         pixelatedImageCache = nil
         editingUndoManager.removeAllActions()
@@ -282,6 +291,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         baseImage = nil
         annotations = []
         selectedAnnotationID = nil
+        lastClickImagePoint = nil
         pixelatedImageCache = nil
         cropSelectionRect = nil
         delegate?.canvasView(self, didUpdateCropRect: nil)
@@ -289,8 +299,13 @@ final class CanvasView: NSView, NSTextViewDelegate {
         needsDisplay = true
     }
 
-    func setColor(_ color: NSColor) {
+    /// Sets the color used for the next annotation, without recoloring the selection.
+    func setDrawingColor(_ color: NSColor) {
         currentColor = color
+    }
+
+    func setColor(_ color: NSColor) {
+        setDrawingColor(color)
         guard let index = selectedIndex, annotations[index].kind != .mosaic else { return }
         let before = snapshot()
         annotations[index].color = color
@@ -907,8 +922,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
         nudgeSeriesID = nil
         guard let baseImage else { return }
         // Clicking away from an open text box only finishes it (like Skitch);
-        // the next click starts a new one. Otherwise a fresh empty box would
-        // swallow tool shortcut keys such as R.
+        // the next click starts a new one.
         // AppKit moves focus to the canvas (ending the edit) before mouseDown
         // runs, so also check whether this very click is what ended it.
         let wasEditingText = inlineTextEditor != nil
@@ -935,6 +949,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
             return
         }
         guard let imagePoint = imagePoint(from: viewPoint, image: baseImage) else { return }
+        lastClickImagePoint = imagePoint
         dragStart = imagePoint
         dragStartInView = viewPoint
         didChangeDuringDrag = false
@@ -1045,6 +1060,10 @@ final class CanvasView: NSView, NSTextViewDelegate {
     }
 
     override func mouseUp(with event: NSEvent) {
+        if tool != .crop, let baseImage {
+            let viewPoint = convert(event.locationInWindow, from: nil)
+            lastClickImagePoint = unclampedImagePoint(from: viewPoint, image: baseImage)
+        }
         defer {
             dragStart = nil
             dragStartInView = nil
@@ -1104,6 +1123,13 @@ final class CanvasView: NSView, NSTextViewDelegate {
     var onCropCommitRequested: (() -> Void)?
 
     override func keyDown(with event: NSEvent) {
+        if isInsertingTypedLabel { return }
+        // The inline editor is up but this view still received the key. Keep
+        // the characters in the label instead of starting another one.
+        if let editor = inlineTextEditor {
+            routeKeyToInlineEditor(event, editor: editor)
+            return
+        }
         // Return / Enter applies the crop while cropping.
         if tool == .crop, cropSelectionRect != nil, event.keyCode == 36 || event.keyCode == 76 {
             onCropCommitRequested?()
@@ -1114,38 +1140,53 @@ final class CanvasView: NSView, NSTextViewDelegate {
             return
         }
         // Arrow keys nudge the selected object: 1 pt, or 10 pt with Shift.
-        if inlineTextEditor == nil,
-           event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+        if event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
            let direction = CanvasView.nudgeDirection(forKeyCode: event.keyCode),
            selectedIndex != nil {
             let step: CGFloat = event.modifierFlags.contains(.shift) ? 10 : 1
             nudgeSelection(by: CGPoint(x: direction.x * step, y: direction.y * step))
             return
         }
-        // Single-key tool shortcuts (only when not editing text and no modifier).
-        if inlineTextEditor == nil,
-           event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
-           let chars = event.charactersIgnoringModifiers?.lowercased(),
-           let tool = CanvasView.toolForShortcut(chars) {
-            onToolShortcut?(tool)
+        // Typing drops a label at the last click, or on an arrow's tail when
+        // one is selected. Tool changes are clicks on the toolbar icons.
+        if shouldBeginTypedLabel(for: event) {
+            beginTypedLabel(with: event)
             return
         }
         super.keyDown(with: event)
     }
 
-    /// Reports a tool chosen by keyboard so the controller can update the UI too.
-    var onToolShortcut: ((EditorTool) -> Void)?
+    private func routeKeyToInlineEditor(_ event: NSEvent, editor: InlineTextEditor) {
+        isInsertingTypedLabel = true
+        defer { isInsertingTypedLabel = false }
+        if window?.firstResponder !== editor.textView {
+            window?.makeFirstResponder(editor.textView)
+        }
+        editor.textView.keyDown(with: event)
+    }
 
-    private static func toolForShortcut(_ key: String) -> EditorTool? {
-        switch key {
-        case "a", "1": return .arrow
-        case "t", "2": return .text
-        case "r", "3": return .rectangle
-        case "o", "4": return .ellipse
-        case "l", "5": return .line
-        case "m", "6": return .mosaic
-        case "c", "7": return .crop
-        default: return nil
+    private func shouldBeginTypedLabel(for event: NSEvent) -> Bool {
+        guard tool != .crop,
+              baseImage != nil,
+              event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+              typedLabelOrigin() != nil else { return false }
+        return Self.isPlainTypingEvent(event)
+    }
+
+    /// Where a typed label's top-left goes. A selected arrow uses its tail,
+    /// the thin end. Anything else uses the last click on the image.
+    private func typedLabelOrigin() -> CGPoint? {
+        if let index = selectedIndex, annotations[index].kind == .arrow {
+            return annotations[index].displayedStart
+        }
+        return lastClickImagePoint
+    }
+
+    /// Printable keys that should become label text, not commands or navigation.
+    private static func isPlainTypingEvent(_ event: NSEvent) -> Bool {
+        guard let characters = event.characters, !characters.isEmpty else { return false }
+        return characters.unicodeScalars.allSatisfy { scalar in
+            scalar.value >= 32 && scalar.value != 127 && scalar.value < 0xF700
         }
     }
 
@@ -1191,6 +1232,68 @@ final class CanvasView: NSView, NSTextViewDelegate {
         selectedAnnotationID = nil
         registerUndo(to: before, actionName: NSLocalizedString("Delete Annotation", comment: ""))
         contentDidChange()
+    }
+
+    /// Opens a text label at the last click, or at the selected arrow's tail,
+    /// and seeds it with the characters in `event`.
+    private func beginTypedLabel(with event: NSEvent) {
+        guard baseImage != nil, let rawOrigin = typedLabelOrigin() else { return }
+        let fontSize = currentTextSize ?? defaultTextFontSize(for: currentLineWidth)
+        let origin = clampedTextOrigin(
+            rawOrigin,
+            fontSize: fontSize,
+            color: currentColor,
+            lineWidth: currentLineWidth
+        )
+        let session = TextEditingSession(
+            origin: origin,
+            before: snapshot(),
+            insertionIndex: nil,
+            originalAnnotation: nil,
+            color: currentColor,
+            lineWidth: currentLineWidth,
+            fontSize: fontSize
+        )
+        isInsertingTypedLabel = true
+        defer { isInsertingTypedLabel = false }
+        presentInlineTextEditor(text: "", session: session)
+        guard let textView = inlineTextEditor?.textView else { return }
+        insertInitialLabelText(event, into: textView)
+    }
+
+    /// Prefer the text system so an IME can keep composing. If this view is not
+    /// the key window's first responder yet, insert the characters directly.
+    private func insertInitialLabelText(_ event: NSEvent, into textView: NSTextView) {
+        let textSystemCanTakeTheKey = textView.window?.isKeyWindow == true
+            && textView.window?.firstResponder === textView
+        if textSystemCanTakeTheKey {
+            textView.keyDown(with: event)
+        }
+        if textView.string.isEmpty, !textView.hasMarkedText(),
+           let characters = event.characters, !characters.isEmpty {
+            textView.insertText(characters, replacementRange: NSRange(location: NSNotFound, length: 0))
+        }
+    }
+
+    /// Pulls a label's top-left back inside the image, matching the clamp applied
+    /// when the label is committed.
+    private func clampedTextOrigin(
+        _ origin: CGPoint,
+        fontSize: CGFloat,
+        color: NSColor,
+        lineWidth: CGFloat
+    ) -> CGPoint {
+        guard let baseImage else { return origin }
+        let probe = Annotation(
+            kind: .text,
+            rect: CGRect(x: origin.x, y: origin.y, width: 16, height: fontSize + 10),
+            color: color,
+            lineWidth: lineWidth,
+            text: " ",
+            textSize: fontSize
+        )
+        let shift = probe.constrainedTranslation(.zero, within: baseImage.size)
+        return CGPoint(x: origin.x + shift.x, y: origin.y + shift.y)
     }
 
     private func beginInlineTextEditing(at point: CGPoint) {
@@ -1269,6 +1372,7 @@ final class CanvasView: NSView, NSTextViewDelegate {
 
     func textDidEndEditing(_ notification: Notification) {
         guard notification.object as? NSTextView === inlineTextEditor?.textView else { return }
+        if isInsertingTypedLabel { return }
         if let event = NSApp.currentEvent, event.type == .leftMouseDown {
             textEditEndedByMouseDownTimestamp = event.timestamp
         }

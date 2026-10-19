@@ -170,9 +170,6 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Canvas
             self?.zoomPercent = percent
             self?.updateStatus()
         }
-        canvasView.onToolShortcut = { [weak self] tool in
-            self?.activateTool(tool)
-        }
         canvasView.onCropCommitRequested = { [weak self] in
             self?.applyCrop()
         }
@@ -205,10 +202,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Canvas
             statusLabel.centerYAnchor.constraint(equalTo: footer.centerYAnchor)
         ])
 
-        colorWell.color = ArrowshotStyle.defaultAnnotationColor
+        let savedColor = AnnotationColorSettings.color
+        colorWell.color = savedColor
+        canvasView.setDrawingColor(savedColor)
         colorWell.isBordered = false
         colorWell.target = self
         colorWell.action = #selector(colorChanged(_:))
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(savedAnnotationColorChanged),
+            name: AnnotationColorSettings.didChange,
+            object: nil
+        )
 
         widthPopup.addItems(withTitles: ["2", "4", "6", "10", "16", "24"])
         widthPopup.selectItem(at: 2)
@@ -338,7 +343,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Canvas
         button.target = self
         button.action = #selector(toolChanged(_:))
         button.tag = tool.rawValue
-        button.toolTip = String(format: NSLocalizedString("%@ (%@)", comment: "Tool name and its key"), tool.title, tool.shortcutLabel)
+        button.toolTip = tool.title
         button.isBordered = false
         button.focusRingType = .none
         button.setButtonType(.momentaryChange)
@@ -588,7 +593,18 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Canvas
 
     @objc private func colorChanged(_ sender: NSColorWell) {
         canvasView.setColor(sender.color)
+        AnnotationColorSettings.set(sender.color)
         sender.needsDisplay = true
+    }
+
+    @objc private func savedAnnotationColorChanged() {
+        let color = AnnotationColorSettings.color
+        guard AnnotationColorSettings.hexString(for: colorWell.color) != AnnotationColorSettings.hexString(for: color) else {
+            return
+        }
+        colorWell.color = color
+        canvasView.setDrawingColor(color)
+        colorWell.needsDisplay = true
     }
 
     @objc private func widthChanged(_ sender: NSPopUpButton) {
@@ -780,9 +796,7 @@ final class EditorWindowController: NSWindowController, NSWindowDelegate, Canvas
     @objc func zoomFit() { canvasView.resetZoom() }
 
     private func suggestedFileName(format: ImageFormat) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd HH.mm.ss"
-        return "Arrowshot \(formatter.string(from: Date())).\(format.fileExtension)"
+        ExportFileName.fileName(format: format)
     }
 
     private func showError(title: String, message: String) {
