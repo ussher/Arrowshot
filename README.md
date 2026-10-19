@@ -10,6 +10,16 @@ Everything runs locally on your Mac. No account, no cloud, no network access.
 
 ## Features
 
+This copy starts from [TaroMoteki/Arrowshot](https://github.com/TaroMoteki/Arrowshot). The editing behavior below is ours.
+
+- **Type to label** — after you draw a shape or click the image, the next characters you type become a label at that spot. The text tool still places an empty label when you click with it selected.
+- **Arrow labels sit on the thin end** — the label starts where the drag began, at the tail.
+- **Tools come from the icons** — letter keys and 1–7 stay available for typing, so the first character goes into the label.
+- **Color is remembered** — the editor opens on the last color you chose. Settings includes a Default Color well. A fresh install still starts on red.
+- **You choose the file name** — dragging the image out, and ⌘S, use the pattern in Settings. `{date}`, `{time}`, and `{datetime}` fill in the time. The starting pattern is still `Arrowshot` plus the date and time.
+
+The rest matches the original:
+
 - **Skitch-style arrows** — a tapered shaft with a soft drop shadow, tuned to read clearly at a glance
 - **Bold labels** — red text with a white outline and shadow, readable on any background
 - **Rectangles, ellipses (optionally filled), lines, pixelation, and cropping** — crop can extend beyond the image edge
